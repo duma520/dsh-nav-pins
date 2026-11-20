@@ -1,0 +1,10 @@
+# dsh-nav-pins 的 bundle patch。
+#
+# 一行 insert 即挂载 Host 半身（提供 hiddenPanels 配置项，落盘到 profile 的
+# cordis.patch.yml，重启不丢）。浏览器半身（折叠细线 + 面板固定管理）由
+# package.json 的 dsh.client 字段声明，不走本文件的 patch。
+- insert:
+    - id: nav-pins
+      name: '@duma520/dsh-nav-pins'
+      config:
+        hiddenPanels: []

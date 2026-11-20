@@ -1,0 +1,84 @@
+========================================================================
+ 侧栏面板 dsh-nav-pins  v0.1.1  安装说明（三步）
+========================================================================
+
+【这是什么】
+把 DSH 左侧栏那一列面板图标收成一条细线，想用时点一下展开；
+还能把不常用的面板「固定」掉，不再占侧栏位置。
+折叠状态与固定选择都会落盘，重启后还在。
+
+【第 0 步：确认你在用哪个 profile（必须，最容易踩的坑）】
+DSH 的不同 profile 是彼此独立的目录。装错 profile 的表现是：
+插件文件都在、界面却永远看不到入口、/api/info 永远 404。
+
+PowerShell 里查当前运行的实例指向哪个 profile：
+
+    Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
+      Select-Object ProcessId, CommandLine |
+      Where-Object { $_.CommandLine -like '*dsh*' }
+
+输出里出现 \.dsh\profiles\desktop\ 就用 desktop，
+出现 \profiles\web\ 就用 web。下面所有路径里的 <profile> 都换成它。
+
+【第 1 步：把包放进本机并登记到 profile】
+假设你把本包解压/克隆到了 <插件根目录>\dsh-nav-pins。
+
+编辑 <用户目录>\.dsh\profiles\<profile>\package.json，两处都要加：
+
+    "dependencies": {
+      "@duma520/dsh-nav-pins": "link:<插件根目录>/dsh-nav-pins"
+    },
+    "dsh": {
+      "profile": {
+        "bundles": [
+          "@duma520/dsh-nav-pins"
+        ]
+      }
+    }
+
+【第 2 步：建 node_modules 链接（Windows 用 junction，不需要管理员）】
+
+    New-Item -ItemType Junction `
+      -Path   "<用户目录>\.dsh\profiles\<profile>\node_modules\@duma520\dsh-nav-pins" `
+      -Target "<插件根目录>\dsh-nav-pins"
+
+【第 3 步：重启 DSH，然后三处验证】
+A. 侧栏左侧出现一条细线 + 一个小箭头，点箭头能展开/收起。
+
+B. 展开后多出一个「固定面板」入口，点开是面板清单，勾掉的面板不再显示。
+
+C. 重启 DSH，折叠状态与勾选状态都还在 = 落盘成功。
+
+注意：如果之前装过 dsh-nav-fold，请从 dependencies、dsh.profile.bundles、
+cordis.patch.yml 三处一起摘掉它，两套同时启用会互相打架。
+
+========================================================================
+配置与数据在哪
+========================================================================
+- 宿主配置项：hiddenPanels（不在侧栏显示的面板 id 数组），
+  写在 profile 的 cordis.patch.yml 对应实例下：
+      - id: nav-pins
+        name: "@duma520/dsh-nav-pins"
+        config:
+          hiddenPanels: []
+- 折叠状态（高频小状态）走浏览器 localStorage，三个键都以 dsh-nav-pins 开头。
+- 重要：id: nav-pins 是硬约定，浏览器半身用它去取配置。
+  改了 id 必须同步改 lib/client.js 里的 ENTRY_ID。
+
+【卸载】
+1. 从 package.json 的 dependencies 与 dsh.profile.bundles 里删掉 @duma520/dsh-nav-pins；
+2. 删掉 node_modules\@duma520\dsh-nav-pins 这个 junction；
+4. 想清折叠状态：在浏览器里清掉 dsh-nav-pins:* 的 localStorage 键
+3. 重启 DSH。
+
+【开源仓库说明】
+本包只含插件本体。作者本机的 scaffold/（开发探针与回归脚本）与
+version/（历次备份快照）不在仓库里，因为它们绑定本机路径与本机真实数据。
+README 里凡出现 node scaffold/... 的命令，clone 仓库后都跑不了，属正常。
+
+========================================================================
+更多细节
+========================================================================
+README.md 是完整手册：逐项功能、配置字段、工作原理、排错手册、FAQ。
+遇到问题先看 README 的「排错手册」一节，按症状查。
+许可：见 LICENSE。
