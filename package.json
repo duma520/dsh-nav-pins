@@ -2,7 +2,7 @@
   "name": "@duma520/dsh-nav-pins",
   "version": "0.1.1",
   "private": true,
-  "license": "MIT",
+  "license": "AGPL-3.0",
   "type": "module",
   "description": "侧栏全局面板：一条细线收成图标排，展开时可选择固定哪些面板，固定结果落盘持久化",
   "main": "./lib/index.js",
