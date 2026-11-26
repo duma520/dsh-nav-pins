@@ -96,6 +96,49 @@
 | 记忆位置 | `localStorage['dsh-nav-pins:collapsed']` = `collapsed` / `expanded` | 不用管 | 想恢复默认折叠：删掉这个键 |
 | 无障碍标签 | `aria-label` = 「展开全局面板 / Expand global panels」或「折叠全局面板 / Collapse global panels」 | —— | —— |
 | 初始态 | 默认 `collapsed`（收成图标） | —— | —— |
+| 折叠态排版 | 槽宽固定 36px，flex 换行、**每行各自居中**，一行放几个由浏览器按侧栏宽度自己算（纯 CSS，无 JS 参与） | 不用管 | —— |
+| 折叠态「更多」位置 | 与其他面板**同一套 36px 槽位**，跟着换行、跟队对齐 | 不用管 | —— |
+| 折叠态隐藏项 | 直接不占位（`display: none`），该行自动重新均分居中 | 不用管 | 想临时看回被收起的面板：展开后「📌 固定面板」里勾回来 |
+| 折叠态行尾角标 | 宿主行尾那一格（`panelTrailing`，未读角标/快捷键提示）改为绝对定位，不占位 | 不用管 | —— |
+
+#### 折叠态为什么不会再「位置偏移」
+
+早期版本折叠态用的是 `grid-template-columns: repeat(auto-fit, 36px)` + `justify-content: space-evenly`：
+侧栏越宽，多余空闲被均匀撒到图标之间，5 个图标就被摊满整条侧栏；侧栏变窄时列数还会跳变。
+现在改成五件事：
+
+1. **固定 36px 槽 + flex 换行、每行独立居中**（纯 CSS，`flex-wrap: wrap` + `justify-content: center`）。
+   一行能放几个由浏览器按侧栏内宽自己算，拖动窗口即时重排，不需要 JS 量宽度、不写任何 CSS 变量。
+   侧栏窄到一行只放 3 个时，每行依然各自居中，不会整块贴左。
+2. **宿主「更多」按钮纳入同一套槽位**。宿主的「更多」是 `span.JGoLlq_root.wtg9ga_moreAnchor > button.panelRow`
+   （Menu 原语的根 `<span>`，自带 `display: inline-flex`），和其它面板的 `div.panelEntry > button.panelRow`
+   **不是同一种盒子**，早期只给 `panelEntry` 定槽宽，它便按内容宽度落格。
+   现在 `panelEntry` 与 `moreAnchor` 共用同一条 36px 槽规则，两者严丝合缝排在同一列上。
+3. **折叠态把行尾 `panelTrailing` 也脱离文档流**。宿主自己的折叠样式是
+   `.wtg9ga_collapsed .panelTrailing{position:absolute;top:5px;right:5px}`，但它要求**侧栏本身**带宿主的 `_collapsed` 类；
+   本插件折叠的是 `panelList`，侧栏不是宿主折叠态，于是这条规则不生效 —— `panelTrailing` 仍以 `position: static`
+   占着 30px 左右宽度，把 `button` 里 `justify-content: center` 的图标整体挤到左边半槽（实测 glyph 中心比槽中心左偏 8~10px）。
+   **这才是「图标看着不齐」的真正原因**：普通面板都被挤左，唯独宿主的「更多」按钮没有 trailing，于是它反而是唯一居中的那个。
+   现在插件自己补上 `position: absolute; top: 5px; right: 5px`。
+4. **折叠态隐藏面板直接不占位**（`[data-nav-pins-hidden] { display: none !important }`）。
+   视觉上删掉槽位后，这一行由 flex 自己重新均分居中，其余图标不会整体位移。
+   早期为了「grid 固定列数不整体位移」用过 `visibility: hidden` 保留空槽，那在 flex 换行下反而会在行首/行中留下空洞，
+   看起来像「图标被拆成两半」——已经删掉。
+5. **挂载先清旧样式**。DSH 的客户端热重建（HMR）不保证调用上一次 effect 的清理函数，
+   历史版本留在 `<head>` 里的 `style[data-plugin-css="dsh-nav-pins"]` 会一直叠着；
+   旧规则特异性更高时会盖掉新规则（踩过：折叠态隐藏项改成 `display: none` 后真机不生效，就是被三份旧样式盖掉的）。
+   现在 `apply()` 一开始就把同名旧 `<style>` 全部移除，只保留本次这一份。
+
+高亮盒子也一并修了：宿主 `.panelEntryActive` 把背景挂在**外层** `.panelEntry` 上，而图标在**里层** `.panelRow`，
+且 `.panelEntry` 带 `border-inline: var(--dsh-sidebar-paint-inset)` + `background-clip: padding-box`，背景被内缩一圈。
+折叠态现在把 `border-inline-width` 归零、`background-clip` 改回 `border-box`，高亮直接挂到 `button[panelRow]`（36×36、圆角 8），
+和图标严格同盒同心。
+
+> **测量提示（写给以后的自己）**：判断折叠态图标是否对齐，必须读 `getBoundingClientRect()`，
+> 不要拿截图里「暗像素连续段的中心」当图标中心。`⊞+` 由两个方块加右上加号组成，墨迹重心天然右偏，
+> 于是像素重心会报出「『更多』偏右半个槽」——而真实情况完全相反：**是普通面板被 `panelTrailing` 挤左了半槽，
+> 「更多」因为没 trailing 才是唯一居中的那个**。这个坑本轮踩了两遍：先被像素重心误导去查「更多为什么偏右」，
+> 后来挂调试浮层打印每一个 `nav.children` 的 rect 才对上。结论：**怀疑对不齐时，先打印 rect，别先量像素。**
 
 ### 「📌 固定面板」入口（`button[data-nav-pins-manager]`）
 
@@ -265,6 +308,9 @@ form.subscribe(() => { /* 外部改动时同步 */ });
 
 | 版本 | 日期 | 一句话变更 |
 | --- | --- | --- |
+| v0.1.4 | 2026-11-25 | 三重修复：① 折叠态隐藏面板改为直接不占位（不再留空洞）；② 挂载时清掉热重建残留的旧 `<style>`（旧规则曾盖掉新规则）；③ 折叠态给行尾角标 `panelTrailing` 补绝对定位 —— 它原本以 `position: static` 占 33px 把图标挤偏半槽，这才是「看着不齐」的真根因。回归 227 项 |
+| v0.1.3 | 2026-11-25 | 折叠态改用 flex 换行 + 每行独立居中，宿主的「更多」按钮纳入同一套 36px 槽位；删掉 `syncCols`/`ResizeObserver` 等一套 JS 量宽度逻辑。回归 207 项（注：本版曾误判「更多偏出 40~50px」，实为像素测量误差，详见 v0.1.4） |
+| v0.1.2 | 2026-11-25 | 修复折叠态图标「位置偏移」：列数改按侧栏实测宽度算（不再 `space-evenly` 撒满全宽），隐藏面板留空位不塌缩，高亮背景改挂 `panelRow` 与图标同心；新增 `ResizeObserver` 跟随宽度重算。回归 203 项 |
 | v0.1.1 | 2026-11-20 | 修复：折叠箭头改为 CSS 双图切换、属性写入加同值守卫，消除自触发重绘空转；新增无头冒烟测试（155 项） |
 | v0.1.0 | 2026-11-20 | 首版：细线折叠 + 折叠态无固定按键 + 「固定面板」弹窗 + `hiddenPanels` 落盘持久化 |
 
@@ -298,9 +344,9 @@ dsh-nav-pins/
 ```
 
 - 语法自检：`node --check lib/index.js && node --check lib/client.js`
-- 回归测试：`node scaffold/smoke_test.cjs`（应输出「检查项 155 条，失败 0 条 / 结果：ALL PASS」）
+- 回归测试：`node scaffold/smoke_test.cjs`（应输出「检查项 227 条，失败 0 条 / 结果：ALL PASS」）
 - 无构建步骤（手写 ModuleLoader bundle，零依赖）。
-- 许可：MIT。
+- 许可：AGPL-3.0（见下文「许可」小节）。
 
 > 冒烟测试只覆盖逻辑与 DOM 契约（注入、对齐、隐藏、写盘、清理）；细线的视觉外观与图标排布必须在 GUI 里人工目视，测试里没有 CSS 引擎。
 
